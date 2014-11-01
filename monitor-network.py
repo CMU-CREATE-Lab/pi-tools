@@ -11,7 +11,7 @@ def find_my_ip():
     if len(ips) == 1:
         return ips[0]
     else:
-        raise Exception('Found %d ip address candidates in ifconfig (expected 1)' % len(ips))
+        raise Exception('Trying to discover my IP address with ifconfig, but found %d ip address candidates (expected 1)' % len(ips))
 
 def hostinfo(address):
     try:
@@ -41,24 +41,24 @@ for i in range(1, 255):
 
 all = {}
 
+# After 5 seconds of no ping returns, consider device lost
+timeout = 5
+
 for address in addresses:
-    proc = subprocess.Popen(['ping', address], 
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(['ping', address], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     all[address] = {'proc': proc, 'found': False, 'missed': 0}
 
 while True:
     for address in addresses:
-        while select.select([all[address]['proc'].stdout], [], [], 0)[0]:
-            line = all[address]['proc'].stdout.readline()
-            now = datetime.datetime.now().strftime('%H:%M:%S')
-            if re.search('bytes from', line):
-                all[address]['missed'] = 0
-                if not all[address]['found']:
-                    all[address]['found'] = True
-                    print '%s: Found %s %s' % (now, address, hostinfo(address))
-            else:
-                all[address]['missed'] += 1
-                if all[address]['found'] and all[address]['missed'] == 4:
-                    print '%s: Lost %s' % (now, address)
-                    all[address]['found'] = False
+        for inp in [all[address]['proc'].stdout, all[address]['proc'].stderr]:
+            while select.select([inp], [], [], 0)[0]:
+                line = inp.readline()
+                now = datetime.datetime.now().strftime('%H:%M:%S')
+                if re.search('bytes from', line):
+                    if not all[address]['found']:
+                        print '%s: Found %s %s' % (now, address, hostinfo(address))
+                    all[address]['found'] = time.time()
+        if all[address]['found'] and (time.time() - all[address]['found']) > timeout:
+            all[address]['found'] = False
+            print '%s: Lost %s' % (now, address)
     time.sleep(0.2)
